@@ -135,6 +135,24 @@ struct Vote_Tally_t {
     return answer;
   }
 
+  void add_tally(const Vote_Tally_t &other) {
+    confirmed = std::min(confirmed + other.confirmed, MAX_VOTE);
+    conf_no_insert = std::min(conf_no_insert + other.conf_no_insert, MAX_VOTE);
+    deletes = std::min(deletes + other.deletes, MAX_VOTE);
+    a_subst = std::min(a_subst + other.a_subst, MAX_VOTE);
+    c_subst = std::min(c_subst + other.c_subst, MAX_VOTE);
+    g_subst = std::min(g_subst + other.g_subst, MAX_VOTE);
+    t_subst = std::min(t_subst + other.t_subst, MAX_VOTE);
+    no_insert = std::min(no_insert + other.no_insert, MAX_VOTE);
+    insertion_cnt += other.insertion_cnt;
+    if (insertion_cnt > 0) {
+      assert(insertions.back() == Vote_Tally_t::INSERTIONS_DELIM);
+      insertions += other.insertions;
+    } else {
+      insertions = other.insertions;
+    }
+  }
+
   //NB: total does not consider insertions
   uint32 total() const {
     return deletes + a_subst + c_subst + g_subst + t_subst;
@@ -174,6 +192,7 @@ struct Frag_Info_t {
   Frag_Info_t() {
     sequence     = NULL;
     vote         = NULL;
+    vote_rc      = NULL;
     clear_len    = 0;
     left_degree  = 0;
     right_degree = 0;
@@ -183,6 +202,7 @@ struct Frag_Info_t {
 
   char          *sequence;
   Vote_Tally_t  *vote;
+  Vote_Tally_t  *vote_rc;
   uint64         clear_len     : 31;
   uint64         left_degree   : 31;
   uint64         right_degree  : 31;
@@ -312,6 +332,7 @@ struct Thread_Work_Area_t {
   uint32        rev_id;                       //  Ident of the rev_seq read.
 
   Vote_t        globalvote[AS_MAX_READLEN];
+  Vote_t        globalvote_rc[AS_MAX_READLEN];
 
   uint64        passedOlaps;
   uint64        failedOlaps;
@@ -373,6 +394,7 @@ struct feParameters {
   ~feParameters() {
     delete [] readBases;
     delete [] readVotes;
+    delete [] readVotesRC;
     delete [] reads;
     delete [] olaps;
   };
@@ -388,6 +410,7 @@ struct feParameters {
 
   char         *readBases;
   Vote_Tally_t *readVotes;
+  Vote_Tally_t *readVotesRC;
   Frag_Info_t  *reads;
   uint32        readsLen;  // Number of fragments being corrected
 

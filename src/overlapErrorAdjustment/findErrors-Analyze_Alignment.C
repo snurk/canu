@@ -21,12 +21,8 @@
 
 //  Add vote val to G.reads[sub] at sequence position  p
 static void
-Cast_Vote(feParameters *G,
-          Vote_Value_t val,
-          int32        pos,
-          int32        sub) {
-  Vote_Tally_t &vote = G->reads[sub].vote[pos];
-  //fprintf(stderr, "Casting vote val %d at pos %d\n", val, pos);
+Cast_Vote(Vote_Tally_t &vote,
+          Vote_Value_t val) {
   switch (val) {
     case DELETE:
       //fprintf(stderr, "Casting deletion\n");
@@ -94,6 +90,7 @@ Matching_Vote(char ch) {
 //   a_offset  bytes in from the start of the a sequence in  G->reads[sub] .
 //   a_len  and  b_len  are the lengths of the prefixes of  a_part  and
 //   b_part , resp., that align.
+//   rc_b indicates if b read was reverse complemented
 
 //b read should be the "primary" overlaps for which are being analyzed
 //BUT the votes are cast for the "a" read, with a "shifted" id == sub
@@ -102,7 +99,8 @@ void
 Analyze_Alignment(Thread_Work_Area_t *wa,
                   char   *a_part, int32 a_len, int32 a_offset,
                   char   *b_part, int32 b_len,
-                  int32   sub) {
+                  bool   rc_b,
+                  int32  sub) {
 
   assert(a_len >= 0);
   assert(b_len >= 0);
@@ -214,6 +212,7 @@ Analyze_Alignment(Thread_Work_Area_t *wa,
   wa->globalvote[ct].frag_sub  = i;
   wa->globalvote[ct].align_sub = p;
 
+  //FIXME extract into separate function
   //  For each identified change, add votes for some region around the change.
   //
   //  This is adding extra votes if the distance between two errors is larger than a kmer.
@@ -234,6 +233,10 @@ Analyze_Alignment(Thread_Work_Area_t *wa,
   assert(wa->G->End_Exclude_Len > 0);
   //fprintf(stdout, "wa->G->Kmer_Len %d\n", wa->G->Kmer_Len);
 
+  Frag_Info_t& read = wa->G->reads[sub];
+  //if strand-specific votes are enabled and b comes from the other strand -- populate vote_rc
+  Vote_Tally_t* read_votes = (read.vote_rc == NULL || !rc_b) ? read.vote : read.vote_rc;
+
   for (int32 event_idx = 1; event_idx <= ct; event_idx++) {
     // ===== CASTING MATCH/CONFIRMED/CONF_NO_INSERT VOTES BETWEEN EVENTS event_idx AND event_idx-1 =====
     const auto &prev_event = wa->globalvote[event_idx - 1];
@@ -250,26 +253,25 @@ Analyze_Alignment(Thread_Work_Area_t *wa,
         const int32 a_pos = a_offset + part_pos;
 
         if (p < p_lo) {
-          Cast_Vote(wa->G,
-                    Matching_Vote(a_part[part_pos]),
-                    a_pos,
-                    sub);
+          Vote_Value_t val = Matching_Vote(a_part[part_pos]);
+          //fprintf(stderr, "Casting vote val %d at pos %d\n", val, a_pos);
+          Cast_Vote(read_votes[a_pos], val);
         } else if (p < p_hi) {
           //p_lo <= p < p_hi
-          if (wa->G->reads[sub].vote[a_pos].confirmed < MAX_VOTE)
-            wa->G->reads[sub].vote[a_pos].confirmed++;
+          if (read_votes[a_pos].confirmed < MAX_VOTE)
+            read_votes[a_pos].confirmed++;
 
-          if (wa->G->reads[sub].vote[a_pos].conf_no_insert < MAX_VOTE)
-            wa->G->reads[sub].vote[a_pos].conf_no_insert++;
+          if (read_votes[a_pos].conf_no_insert < MAX_VOTE)
+            read_votes[a_pos].conf_no_insert++;
         } else {
           //p_hi <= p < prev_event_dist
-          if (p == p_hi && wa->G->reads[sub].vote[a_pos].conf_no_insert < MAX_VOTE)
-            wa->G->reads[sub].vote[a_pos].conf_no_insert++;
+          if (p == p_hi && read_votes[a_pos].conf_no_insert < MAX_VOTE)
+            read_votes[a_pos].conf_no_insert++;
 
-          Cast_Vote(wa->G,
-                    Matching_Vote(a_part[part_pos]),
-                    a_pos,
-                    sub);
+          Vote_Value_t val = Matching_Vote(a_part[part_pos]);
+          //fprintf(stderr, "Casting vote val %d at pos %d\n", val, a_pos);
+          Cast_Vote(read_votes[a_pos],
+                    Matching_Vote(a_part[part_pos]));
         }
       }
     }
@@ -296,20 +298,21 @@ Analyze_Alignment(Thread_Work_Area_t *wa,
       //TODO re-enable in some form?
       //Checking that sum of distances to the previous/next event is >= 9
       //if (prev_match + next_match >= wa->G->Vote_Qualify_Len)
-      Cast_Vote(wa->G, wa->globalvote[event_idx].vote_val, a_offset + wa->globalvote[event_idx].frag_sub, sub);
+      const int32 a_pos = a_offset + wa->globalvote[event_idx].frag_sub;
+      Cast_Vote(read_votes[a_pos], wa->globalvote[event_idx].vote_val);
     }
   }
 
   // ===== Finalizing cast insertions =====
   for (int32 a_pos = a_offset; a_pos < a_offset + a_len ; ++a_pos) {
-    auto &insertions_str = wa->G->reads[sub].vote[a_pos].insertions;
+    auto &insertions_str = read_votes[a_pos].insertions;
     if (insertions_str.size() > 0 && insertions_str.back() != Vote_Tally_t::INSERTIONS_DELIM) {
       insertions_str += Vote_Tally_t::INSERTIONS_DELIM;
-      wa->G->reads[sub].vote[a_pos].insertion_cnt++;
+      read_votes[a_pos].insertion_cnt++;
       //fprintf(stderr, "Increasing insertion count at position %d\n", a_pos);
     } else {
-      if (wa->G->reads[sub].vote[a_pos].no_insert < MAX_VOTE)
-        wa->G->reads[sub].vote[a_pos].no_insert++;
+      if (read_votes[a_pos].no_insert < MAX_VOTE)
+        read_votes[a_pos].no_insert++;
     }
   }
 }

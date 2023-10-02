@@ -62,6 +62,11 @@ Read_Frags(feParameters   *G,
 
   G->readBases = new char          [basesLength];
   G->readVotes = new Vote_Tally_t  [votesLength];             //  Has constructor, no need to init
+  //FIXME configure!
+  bool ENABLE_RC = true;
+  if (ENABLE_RC) {
+    G->readVotesRC = new Vote_Tally_t  [votesLength];             //  Has constructor, no need to init
+  }
   G->readsLen  = G->endID - G->bgnID + 1;
   G->reads     = new Frag_Info_t   [G->readsLen];             //  Has constructor, no need to init
 
@@ -79,6 +84,9 @@ Read_Frags(feParameters   *G,
 
     G->reads[curID - G->bgnID].sequence = G->readBases + basesLength;
     G->reads[curID - G->bgnID].vote     = G->readVotes + votesLength;
+    if (ENABLE_RC) {
+      G->reads[curID - G->bgnID].vote_rc  = G->readVotesRC + votesLength;
+    }
 
     basesLength += readLength + 1;
     votesLength += readLength;

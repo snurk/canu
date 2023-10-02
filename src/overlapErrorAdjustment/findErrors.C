@@ -419,7 +419,7 @@ main(int argc, char **argv) {
     fprintf(stderr, "  -p   num-reads          confirm haplotypes if at least num-reads have it\n");
     fprintf(stderr, "                            if not set, haplotypes will never be confirmed\n");
     fprintf(stderr, "  -f                      change 'freeze' radius around heterozygous positions (default:1, 0 to disable)\n");
-    fprintf(stderr, "  -m   maked-error-rate   post trivial DNA masking error-rate threshold\n");
+    fprintf(stderr, "  -m   masked-error-rate   post trivial DNA masking error-rate threshold\n");
     fprintf(stderr, "  -V   vote-len           number of exact match bases around an error to vote to change\n");
     fprintf(stderr, "  -x   end-exclude-len    length of end of exact match to exclude in preventing change\n");
 

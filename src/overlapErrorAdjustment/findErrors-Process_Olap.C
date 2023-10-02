@@ -126,6 +126,7 @@ void
 Analyze_Alignment(Thread_Work_Area_t *wa,
                   char   *a_part, int32 a_len, int32 a_offset,
                   char   *b_part, int32 b_len,
+                  bool   rc_b,
                   int32   sub);
 
 
@@ -173,9 +174,11 @@ Process_Olap(Olap_Info_t        *olap,
 
   //  If innie, reverse-complement the B sequence.
 
+  bool rc_b = false;
   if ((olap->innie == true) && (wa->rev_id != olap->b_iid)) {
     strcpy(b_part, b_seq);
     reverseComplementSequence(b_part, 0);
+    rc_b = true;
     wa->rev_id = olap->b_iid;
   }
 
@@ -273,6 +276,7 @@ Process_Olap(Olap_Info_t        *olap,
       Analyze_Alignment(wa,
                         a_part, a_end, a_offset,
                         b_part, b_end,
+                        rc_b,
                         ri);
       return;
     }

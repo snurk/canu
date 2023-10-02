@@ -225,6 +225,7 @@ Check_Insert(const Vote_Tally_t &vote, char base, int32 Haplo_Expected, int32 Ha
     return "";
   }
 
+  //FIXME might need to change this part
   if (vote.conf_no_insert == 1 && ins_max <= 6) {
     //fprintf(stderr, "No insert was supported & small weight of vote: no_insert = %d ins_max = %d\n", vote.no_insert, ins_max);
     return "";
@@ -234,7 +235,7 @@ Check_Insert(const Vote_Tally_t &vote, char base, int32 Haplo_Expected, int32 Ha
 }
 
 
-//  Returns true if a Haplo_Confirm delete is present AND 
+//  Returns true if a Haplo_Confirm delete is present AND
 //
 
 bool Is_Het_Del(const Vote_Tally_t &vote, int32 Haplo_Confirm) {
@@ -257,11 +258,20 @@ std::vector<uint32>
 Find_Het_Del_Positions(const feParameters *G, const Frag_Info_t &read, int32 Haplo_Confirm) {
   std::vector<uint32> answer;
   for (uint32 pos = 0; pos < read.clear_len; pos++) {
-    if (Is_Het_Del(read.vote[pos], Haplo_Confirm)) {
+    if (Is_Het_Del(read.vote[pos], Haplo_Confirm)
+          && (read.vote_rc == NULL || Is_Het_Del(read.vote_rc[pos], Haplo_Confirm))) {
       answer.push_back(pos);
     }
   }
   return answer;
+}
+
+Vote_Tally_t All_Votes(const Frag_Info_t &read, uint32 pos) {
+  Vote_Tally_t vote = read.vote[pos];
+  if (read.vote_rc != NULL) {
+    vote.add_tally(read.vote_rc[pos]);
+  }
+  return vote;
 }
 
 //TODO consider special case of two reads voting for different bases
@@ -270,7 +280,7 @@ bool
 Report_Position(const feParameters *G, const Frag_Info_t &read, uint32 pos, bool block_deletion,
     //Correction_Output_t out, std::ostream &os) {
     Correction_Output_t out, FILE *fp) {
-  Vote_Tally_t vote = read.vote[pos];
+  const Vote_Tally_t vote = All_Votes(read, pos);
   char base = read.sequence[pos];
 
   //static const uint32 STRONG_CONFIRMATION_READ_CNT = 2;
@@ -283,7 +293,7 @@ Report_Position(const feParameters *G, const Frag_Info_t &read, uint32 pos, bool
 
   bool corrected = false;
 
-  if (vote.conf_no_insert < G->Haplo_Strong) {
+  if (vote.conf_no_insert < G->Haplo_Strong || (read.vote_rc != NULL && read.vote_rc[pos].conf_no_insert == 0)) {
     //fprintf(stderr, "Checking read:pos %d:%d for insertion\n", out.readID, pos);
     std::string ins_str = Check_Insert(vote, base, G->Haplo_Expected, G->Haplo_Confirm);
     if (ins_str.empty()) {
@@ -299,7 +309,7 @@ Report_Position(const feParameters *G, const Frag_Info_t &read, uint32 pos, bool
     }
   }
 
-  if (vote.confirmed < G->Haplo_Strong) {
+  if (vote.confirmed < G->Haplo_Strong || (read.vote_rc != NULL && read.vote_rc[pos].confirmed == 0)) {
     //fprintf(stderr, "Checking read:pos %d:%d for del/subst\n", out.readID, pos);
     Vote_Value_t vote_t = Check_Del_Subst(vote, base, G->Haplo_Expected, G->Haplo_Confirm);
     if (vote_t == NO_VOTE) {
@@ -317,6 +327,62 @@ Report_Position(const feParameters *G, const Frag_Info_t &read, uint32 pos, bool
 
   return corrected;
 }
+
+////TODO consider special case of two reads voting for different bases
+//// return false if nothing happened on the position and true otherwise
+//bool
+//Report_Position_Strand(const feParameters *G, const Frag_Info_t &read, uint32 pos, bool block_deletion,
+//    //Correction_Output_t out, std::ostream &os) {
+//    Correction_Output_t out, FILE *fp) {
+//  const Vote_Tally_t& vote = read.vote[pos];
+//  assert(read.vote_rc != NULL);
+//  const Vote_Tally_t& vote_rc = read.vote_rc[pos];
+//  char base = read.sequence[pos];
+//
+//  //static const uint32 STRONG_CONFIRMATION_READ_CNT = 2;
+//
+//  if (vote.all_but(base) == 0)
+//    return false;
+//
+//  //Printing votes around position
+//  //FPrint_Votes(stderr, read, pos, /*locality radius*/5);
+//
+//  bool corrected = false;
+//
+//  if (vote.conf_no_insert < G->Haplo_Strong || vote_rc.conf_no_insert < G->Haplo_Strong) {
+//    //fprintf(stderr, "Checking read:pos %d:%d for insertion\n", out.readID, pos);
+//    std::string ins_str = Check_Insert(vote, base, G->Haplo_Expected, G->Haplo_Confirm);
+//    if (ins_str.empty()) {
+//      //fprintf(stderr, "Read:pos %d:%d -- filtered out\n", out.readID, pos);
+//    } else {
+//      //fprintf(stderr, "Read:pos %d:%d -- corrected insertion. Insertion string ='%s'\n", out.readID, pos, ins_str.c_str());
+//      for (char c : ins_str) {
+//        out.type       = InsVote(c);
+//        out.pos        = pos;
+//        writeToFile(out, "correction2", fp);
+//      }
+//      corrected = true;
+//    }
+//  }
+//
+//  if (vote_rc.confirmed < G->Haplo_Strong || vote_rc.confirmed < G->Haplo_Strong) {
+//    //fprintf(stderr, "Checking read:pos %d:%d for del/subst\n", out.readID, pos);
+//    Vote_Value_t vote_t = Check_Del_Subst(vote, base, G->Haplo_Expected, G->Haplo_Confirm);
+//    if (vote_t == NO_VOTE) {
+//      //fprintf(stderr, "Read:pos %d:%d -- filtered out\n", out.readID, pos);
+//    } else if (vote_t == DELETE && block_deletion) {
+//      //fprintf(stderr, "Read:pos %d:%d -- deletion blocked\n", out.readID, pos);
+//    } else {
+//      out.type       = vote_t;
+//      out.pos        = pos;
+//      //fprintf(stderr, "Read:pos %d:%d -- corrected substitution/deletion\n", out.readID, pos);
+//      writeToFile(out, "correction3", fp);
+//      corrected = true;
+//    }
+//  }
+//
+//  return corrected;
+//}
 
 void
 Output_Corrections(feParameters *G) {
